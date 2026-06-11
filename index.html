@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0c1310">
+<title>GullyScore — Pocket Cricket Scorer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main id="screen"></main>
+
+  <nav id="tabbar">
+    <button data-view="home"><span class="ico">🏠</span><span>Home</span></button>
+    <button data-view="score"><span class="ico">🏏</span><span>Score</span></button>
+    <button data-view="history"><span class="ico">📜</span><span>History</span></button>
+    <button data-view="stats"><span class="ico">📊</span><span>Stats</span></button>
+  </nav>
+
+  <div id="modal" class="hidden">
+    <div id="modal-backdrop"></div>
+    <div id="modal-card"></div>
+  </div>
+
+  <div id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

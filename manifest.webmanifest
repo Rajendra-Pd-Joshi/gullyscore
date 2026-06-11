@@ -1,0 +1,13 @@
+{
+  "name": "GullyScore — Pocket Cricket Scorer",
+  "short_name": "GullyScore",
+  "description": "Ball-by-ball cricket scoring with scorecards, match history and career stats. Works fully offline.",
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0c1310",
+  "theme_color": "#0c1310",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
