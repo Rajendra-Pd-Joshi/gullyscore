@@ -869,6 +869,7 @@ function renderHome() {
     <div class="hero">
       <div class="logo">🏏</div>
       <h1>Gully<em>Score</em></h1>
+      <p class="byline">By Raju Joshi</p>
       <p>Pocket cricket scorer · works offline · remembers everything</p>
     </div>
     ${resume}

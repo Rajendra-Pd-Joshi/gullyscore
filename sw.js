@@ -1,5 +1,5 @@
 // GullyScore service worker — network-first with offline fallback
-const CACHE = 'gullyscore-v2';
+const CACHE = 'gullyscore-v3';
 const ASSETS = ['.', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
