@@ -1,6 +1,6 @@
 'use strict';
 /* ============================================================
-   GullyScore — pocket cricket scorer
+   BaglekhanScore — pocket cricket scorer
    Event-sourced engine: every innings is a log of events,
    all state (score, batters, bowlers, strike, partnerships)
    is derived by replaying the log. Undo = drop the last ball.
@@ -712,11 +712,11 @@ function careerStats() {
    BACKUP / RESTORE (export-import JSON)
    ============================================================ */
 window.exportBackup = function () {
-  const blob = new Blob([JSON.stringify({ app: 'gullyscore', exportedAt: Date.now(), matches, teams }, null, 1)],
+  const blob = new Blob([JSON.stringify({ app: 'baglekhanscore', exportedAt: Date.now(), matches, teams }, null, 1)],
     { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `gullyscore-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `baglekhanscore-backup-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
   toast('Backup downloaded 💾');
@@ -729,7 +729,7 @@ window.importBackup = function (input) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (data.app !== 'gullyscore' || !Array.isArray(data.matches)) throw 0;
+      if (!/^(baglekhanscore|gullyscore)$/.test(data.app) || !Array.isArray(data.matches)) throw 0;
       window._pendingImport = data;
       modal(`
         <h2>Restore backup?</h2>
@@ -738,7 +738,7 @@ window.importBackup = function (input) {
         <button class="btn" onclick="confirmImport()">Restore</button>
         <button class="btn ghost small mt" onclick="closeModal()">Cancel</button>
       `);
-    } catch { toast('Not a valid GullyScore backup file'); }
+    } catch { toast('Not a valid BaglekhanScore backup file'); }
   };
   reader.readAsText(f);
   input.value = '';
@@ -868,7 +868,7 @@ function renderHome() {
   return `
     <div class="hero">
       <div class="logo">🏏</div>
-      <h1>Gully<em>Score</em></h1>
+      <h1>Baglekhan<em>Score</em></h1>
       <p class="byline">By Raju Joshi</p>
       <p>Pocket cricket scorer · works offline · remembers everything</p>
     </div>

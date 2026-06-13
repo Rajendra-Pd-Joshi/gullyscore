@@ -1,5 +1,5 @@
-// GullyScore service worker — network-first with offline fallback
-const CACHE = 'gullyscore-v3';
+// BaglekhanScore service worker — network-first with offline fallback
+const CACHE = 'baglekhanscore-v4';
 const ASSETS = ['.', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {

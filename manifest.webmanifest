@@ -1,6 +1,6 @@
 {
-  "name": "GullyScore — Pocket Cricket Scorer",
-  "short_name": "GullyScore",
+  "name": "BaglekhanScore — Pocket Cricket Scorer",
+  "short_name": "BaglekhanScore",
   "description": "Ball-by-ball cricket scoring with scorecards, match history and career stats. Works fully offline.",
   "start_url": ".",
   "display": "standalone",
