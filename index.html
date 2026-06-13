@@ -27,6 +27,11 @@
 
   <div id="toast"></div>
 
+  <!-- Firebase (compat SDK) — only used when firebase-config.js holds a real config.
+       onerror keeps the app fully working offline / when these can't load. -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js" onerror="window.__noFirebase=1"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js" onerror="window.__noFirebase=1"></script>
+  <script src="firebase-config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

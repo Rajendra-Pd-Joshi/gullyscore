@@ -203,6 +203,22 @@ label.fl{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:
 }
 .pship b{color:var(--green)}
 
+/* ---------- live sync ---------- */
+.sync-badge{
+  display:block;width:100%;text-align:center;
+  font-size:12.5px;font-weight:800;letter-spacing:.03em;
+  padding:8px 12px;border-radius:12px;margin-bottom:10px;
+}
+.sync-badge.writer{background:var(--green-dim);color:var(--green);border:1px solid var(--green)}
+.sync-badge.reader{background:#15273d;color:var(--blue);border:1px solid #2c4360}
+.watch-panel{
+  text-align:center;
+  background:#15273d;border:1px solid #2c4360;
+  border-radius:var(--radius);padding:16px;
+}
+body.light .watch-panel{background:#dbeafe;border-color:#bfdbfe}
+.watch-line{font-size:13.5px;font-weight:600;color:var(--blue);margin-bottom:12px}
+
 /* ---------- scorecard ---------- */
 .tscroll{overflow-x:auto}
 .sc-table{width:100%;border-collapse:collapse;font-size:13px;min-width:300px}

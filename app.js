@@ -57,6 +57,204 @@ function closeModal() { $('#modal').classList.add('hidden'); }
 window.closeModal = closeModal;
 
 /* ============================================================
+   LIVE SYNC (Firebase Realtime Database)
+   ------------------------------------------------------------
+   One match = one "room" at /rooms/{code} holding:
+     { match: <the whole live object>,
+       lock:  { holder, holderName, pwHash, updatedAt },
+       updatedAt }
+   The device whose per-room token === lock.holder is the WRITER
+   (can score). Everyone else is a READER (auto-updating, view
+   only). Taking over the lock with the password instantly demotes
+   the previous writer to read-only on their next snapshot.
+   All of this is dormant unless firebase-config.js holds a config.
+   ============================================================ */
+let db = null;            // firebase database handle (null = sync off)
+let roomOff = null;       // detaches the current room listener
+let syncRole = null;      // 'writer' | 'reader' | null
+let syncOnline = false;   // realtime connection state
+
+let rooms = JSON.parse(localStorage.getItem('baglekhan.rooms') || '{}');
+const saveRooms = () => localStorage.setItem('baglekhan.rooms', JSON.stringify(rooms));
+function myToken(code) {
+  if (!rooms[code]) rooms[code] = {};
+  if (!rooms[code].token) { rooms[code].token = uid() + uid(); saveRooms(); }
+  return rooms[code].token;
+}
+const setRoomRole = (code, role) => { if (rooms[code]) { rooms[code].role = role; saveRooms(); } };
+
+const syncReady = () => !!db;
+
+function initFirebase() {
+  if (window.__noFirebase || !window.FIREBASE_CONFIG || typeof firebase === 'undefined') return false;
+  try {
+    if (!firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+    db = firebase.database();
+    db.ref('.info/connected').on('value', s => {
+      syncOnline = !!s.val();
+      if (live && live.shared && (view === 'score' || view === 'home')) updateSyncBadge();
+    });
+    return true;
+  } catch (e) { console.warn('Firebase init failed:', e); db = null; return false; }
+}
+
+async function hashPw(code, pw) {
+  const data = new TextEncoder().encode('baglekhan|' + code + '|' + pw);
+  const buf = await crypto.subtle.digest('SHA-256', data);
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+function randomRoomCode() {
+  const a = ['GULLY', 'PITCH', 'YORKER', 'SIX', 'BAGLE', 'COVER', 'SLIP', 'BOUND'];
+  return a[Math.floor(Math.random() * a.length)] + '-' + Math.floor(1000 + Math.random() * 9000);
+}
+
+// writer creates the room when the 1st innings begins
+async function createRoom(code, pw, scorerName) {
+  if (!syncReady()) return;
+  const tok = myToken(code);
+  setRoomRole(code, 'writer');
+  const pwHash = await hashPw(code, pw);
+  live.shared = true; live.room = code; live.scorerName = scorerName;
+  syncRole = 'writer';
+  await db.ref('rooms/' + code).set({
+    match: live, updatedAt: Date.now(),
+    lock: { holder: tok, holderName: scorerName, pwHash, updatedAt: Date.now() }
+  }).catch(e => toast('Sync error: ' + e.message));
+  subscribeRoom(code);
+  toast('📡 Live room "' + code + '" is on air');
+}
+
+// writer pushes the whole match after every change
+function pushRoom() {
+  if (!syncReady() || !live || !live.shared || syncRole !== 'writer') return;
+  db.ref('rooms/' + live.room).update({ match: live, updatedAt: Date.now() }).catch(() => {});
+}
+
+// mark the room finished (writer), then stop listening
+function endRoom() {
+  if (syncReady() && live && live.shared && syncRole === 'writer') {
+    db.ref('rooms/' + live.room).update({ match: live, done: true, updatedAt: Date.now() }).catch(() => {});
+  }
+  if (roomOff) { roomOff(); roomOff = null; }
+  syncRole = null;
+}
+
+function subscribeRoom(code) {
+  if (!syncReady()) return;
+  if (roomOff) roomOff();
+  const ref = db.ref('rooms/' + code);
+  const handler = ref.on('value', snap => {
+    const data = snap.val();
+    if (!data) return;
+    const amHolder = data.lock && data.lock.holder === myToken(code);
+    const newRole = amHolder ? 'writer' : 'reader';
+    if (syncRole === 'writer' && newRole === 'reader') {
+      toast('📵 ' + ((data.lock && data.lock.holderName) || 'Another device') + ' is now scoring — you’re watching');
+    }
+    syncRole = newRole;
+    setRoomRole(code, newRole);
+    syncOnline = true;
+    // readers mirror the incoming match; writers are the source of truth
+    if (newRole === 'reader') {
+      live = data.match;
+      live.shared = true; live.room = code;
+      saveLive();
+    }
+    if (view === 'score' || view === 'home') renderApp();
+  });
+  roomOff = () => ref.off('value', handler);
+}
+
+// a brand-new spectator joins by code
+function joinRoom(code) {
+  if (!syncReady()) { toast('Live sync isn’t set up yet'); return; }
+  code = code.trim().toUpperCase();
+  if (!code) return;
+  myToken(code);
+  db.ref('rooms/' + code).get().then(snap => {
+    const data = snap.val();
+    if (!data) { toast('No live match with code "' + code + '"'); return; }
+    live = data.match;
+    live.shared = true; live.room = code;
+    syncRole = (data.lock && data.lock.holder === myToken(code)) ? 'writer' : 'reader';
+    setRoomRole(code, syncRole);
+    saveLive();
+    subscribeRoom(code);
+    closeModal();
+    go('score');
+    toast('👁 Watching "' + code + '" live');
+  }).catch(e => toast('Could not join: ' + e.message));
+}
+
+window.joinModal = function () {
+  modal(`
+    <h2>Join a live match</h2>
+    <div class="sub">Enter the room code the scorer shared with you. You’ll watch the score update live.</div>
+    <label class="fl">Room code</label>
+    <input id="join-code" placeholder="e.g. GULLY-4821" style="text-transform:uppercase" autocomplete="off">
+    <button class="btn mt" onclick="joinRoom(document.getElementById('join-code').value)">Watch live 👁</button>
+    <button class="btn ghost small mt" onclick="closeModal()">Cancel</button>
+  `);
+  setTimeout(() => $('#join-code') && $('#join-code').focus(), 60);
+};
+
+// reader takes over scoring with the password
+window.takeOverModal = function () {
+  modal(`
+    <h2>Take over scoring</h2>
+    <div class="sub">Enter the scorer password. The current scorer will switch to watch-only automatically.</div>
+    <label class="fl">Your name</label>
+    <input id="to-name" placeholder="e.g. Raju" autocomplete="off">
+    <label class="fl">Scorer password</label>
+    <input id="to-pw" type="password" placeholder="Password set by the first scorer" autocomplete="off">
+    <button class="btn mt" onclick="takeOver()">Unlock & take over ✍️</button>
+    <button class="btn ghost small mt" onclick="closeModal()">Cancel</button>
+  `);
+  setTimeout(() => $('#to-pw') && $('#to-pw').focus(), 60);
+};
+window.takeOver = async function () {
+  const code = live.room;
+  const name = ($('#to-name').value.trim()) || 'New scorer';
+  const pw = $('#to-pw').value;
+  const snap = await db.ref('rooms/' + code + '/lock').get();
+  const lock = snap.val();
+  if (!lock) { toast('Room not found'); return; }
+  const pwHash = await hashPw(code, pw);
+  if (pwHash !== lock.pwHash) { toast('❌ Wrong password'); return; }
+  const tok = myToken(code);
+  await db.ref('rooms/' + code + '/lock').update({ holder: tok, holderName: name, updatedAt: Date.now() });
+  live.scorerName = name;
+  setRoomRole(code, 'writer');
+  closeModal();
+  toast('✍️ You’re scoring now');
+  // syncRole flips to 'writer' via the live listener; force an immediate view
+  syncRole = 'writer';
+  go('score');
+};
+
+window.shareRoom = async function () {
+  const code = live.room;
+  const url = location.origin + location.pathname;
+  const msg = `🏏 Watch my cricket match LIVE on BaglekhanScore!\n${esc(live.teams[0].name)} vs ${esc(live.teams[1].name)}\n\nOpen: ${url}\nTap “Join live match”, code: ${code}`;
+  try {
+    if (navigator.share) await navigator.share({ title: 'BaglekhanScore live', text: msg });
+    else { await navigator.clipboard.writeText(msg); toast('Invite copied 📋'); }
+  } catch { /* user cancelled share */ }
+};
+
+function updateSyncBadge() {
+  const el = $('#sync-badge');
+  if (el) el.outerHTML = syncBadgeHTML();
+}
+function syncBadgeHTML() {
+  if (!live || !live.shared) return '';
+  const dot = syncOnline ? '🟢' : '🟡';
+  const role = syncRole === 'writer' ? 'You’re scoring' : 'Watching live';
+  return `<span id="sync-badge" class="sync-badge ${syncRole}">${dot} LIVE · ${role} · ${esc(live.room)}</span>`;
+}
+
+/* ============================================================
    ENGINE — replay an innings event log into a state snapshot
    Events:
      {kind:'openers', striker, nonStriker}
@@ -306,6 +504,7 @@ const curInn = () => live.innings[curInnIdx()];
 function pushEvent(ev) {
   curInn().events.push(ev);
   saveLive();
+  pushRoom();
   if (ev.kind === 'ball') commentary(ev);
   go('score');
 }
@@ -342,6 +541,7 @@ window.undoBall = function () {
   if (last < 0) { toast('Nothing to undo'); return; }
   evs.splice(last); // removes the ball + any newBatter/newBowler after it
   saveLive();
+  pushRoom();
   closeModal();
   toast('Last ball undone ↩');
   go('score');
@@ -480,6 +680,7 @@ window.archiveMatch = function (showCard) {
   live.result = r.text;
   live.motm = r.motm;
   live.endedAt = Date.now();
+  if (live.shared) endRoom();
   matches.unshift(live);
   saveMatches();
   const id = live.id;
@@ -504,6 +705,7 @@ window.scoreMenu = function () {
 window.declareInnings = function () {
   curInn().declared = true;
   saveLive();
+  pushRoom();
   closeModal();
   go('score');
 };
@@ -550,6 +752,7 @@ window.applyRenames = function () {
     }
   }
   saveLive();
+  pushRoom();
   closeModal();
   toast('Names updated ✏️');
   go('score');
@@ -637,6 +840,15 @@ window.startMatchFromForm = function () {
     toss: { winnerIdx, decision },
     target: null, innings: [], done: false
   };
+  // live-share config (applied when the 1st innings begins)
+  const shareOn = $('#share-toggle') && $('#share-toggle').classList.contains('on');
+  if (shareOn && syncReady()) {
+    const code = ($('#share-code').value.trim().toUpperCase()) || randomRoomCode();
+    const pw = $('#share-pw').value;
+    const nm = ($('#share-name').value.trim()) || 'Scorer';
+    if (!pw) { toast('Set a scorer password for the live match'); return; }
+    live.shareCfg = { code, pw, name: nm };
+  }
   saveLive();
   const batIdx = decision === 'bat' ? winnerIdx : 1 - winnerIdx;
   openersModal(batIdx);
@@ -665,6 +877,12 @@ window.beginInnings = function (batIdx) {
   });
   saveLive();
   closeModal();
+  if (live.shareCfg && !live.shared) {
+    const cfg = live.shareCfg; delete live.shareCfg;
+    createRoom(cfg.code, cfg.pw, cfg.name); // async; pushes initial state
+  } else {
+    pushRoom();
+  }
   go('score');
 };
 
@@ -874,6 +1092,7 @@ function renderHome() {
     </div>
     ${resume}
     <button class="btn" onclick="go('setup')">＋ New Match</button>
+    ${syncReady() ? `<button class="btn ghost small mt" onclick="joinModal()">📡 Join live match</button>` : ''}
     <div class="row mt">
       <button class="btn ghost small" onclick="go('teams')">👥 My Teams</button>
       <button class="btn ghost small" onclick="toggleTheme()">${theme === 'dark' ? '☀️ Light mode' : '🌙 Dark mode'}</button>
@@ -954,6 +1173,20 @@ function renderSetup() {
         <input id="nb-val" type="number" min="0" max="5" value="1" inputmode="numeric"></div>
       </div>
     </div>
+    ${syncReady() ? `
+    <div class="card">
+      <h3>📡 Live shared match</h3>
+      <p class="muted" style="font-size:12.5px;margin-bottom:10px">Let others watch the score update live on their phones. Only you (and the password) can score.</p>
+      <button id="share-toggle" class="chip" onclick="this.classList.toggle('on');document.getElementById('share-fields').style.display=this.classList.contains('on')?'block':'none'">Make this a live match</button>
+      <div id="share-fields" style="display:none">
+        <label class="fl">Room code <span style="text-transform:none;font-weight:400">(share this)</span></label>
+        <input id="share-code" value="${randomRoomCode()}" style="text-transform:uppercase">
+        <label class="fl">Your name</label>
+        <input id="share-name" placeholder="e.g. Raju">
+        <label class="fl">Scorer password <span style="text-transform:none;font-weight:400">(needed to take over)</span></label>
+        <input id="share-pw" type="text" placeholder="Set a password">
+      </div>
+    </div>` : ''}
     <button class="btn" onclick="startMatchFromForm()">Toss done — pick openers →</button>
   `;
 }
@@ -985,7 +1218,10 @@ function renderScore() {
   const part = s.curPart && (s.curPart.runs || s.curPart.balls)
     ? `<div class="pship">🤝 Partnership: <b>${s.curPart.runs}</b> (${s.curPart.balls})</div>` : '';
   const extraBtn = (x, lbl) => `<button class="${pendingExtra === x ? 'on' : ''}" onclick="toggleExtra('${x}')">${lbl}</button>`;
+  const isReader = live.shared && syncRole === 'reader';
+  const isWriter = live.shared && syncRole === 'writer';
   return `
+    ${live.shared ? syncBadgeHTML() : ''}
     <div class="scorehead">
       <div class="teamline">
         <span class="tname">${esc(live.teams[inn.batIdx].name)}</span>
@@ -1019,6 +1255,13 @@ function renderScore() {
       </div>
     </div>
 
+    ${isReader ? `
+    <div class="watch-panel">
+      <div class="watch-line">👁 You’re watching live. Updates appear automatically.</div>
+      <button class="btn" onclick="takeOverModal()">✍️ Take over scoring</button>
+      <button class="btn ghost small mt" onclick="viewMatchId=null;go('card')">📋 Full scorecard</button>
+    </div>
+    ` : `
     <div class="pad">
       ${[0, 1, 2, 3].map(r => `<button onclick="tapRun(${r})">${r}</button>`).join('')}
       <button class="four" onclick="tapRun(4)">4</button>
@@ -1034,11 +1277,15 @@ function renderScore() {
       <button onclick="viewMatchId=null;go('card')">📋 CARD</button>
       <button onclick="scoreMenu()">⋯ MORE</button>
     </div>
+    ${isWriter ? `<button class="btn ghost small mt" onclick="shareRoom()">📤 Invite watchers · ${esc(live.room)}</button>` : ''}
+    `}
   `;
 }
 
 // after rendering the score screen, open whichever modal the state demands
 function scoreFlowModals() {
+  // watchers never get scoring prompts — only the writer drives the match
+  if (live.shared && syncRole !== 'writer') return;
   const i = curInnIdx(), s = replay(live, i);
   const closed = inningsClosed(live, i, s);
   if (closed) {
@@ -1196,5 +1443,10 @@ $('#modal-backdrop').addEventListener('click', () => {
 });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 applyTheme();
+// wire up live sync if a Firebase config is present; reconnect to an in-progress shared match
+if (initFirebase() && live && live.shared && live.room) {
+  syncRole = (rooms[live.room] && rooms[live.room].role) || 'reader';
+  subscribeRoom(live.room);
+}
 view = (live && live.innings.length) ? 'score' : 'home';
 renderApp();

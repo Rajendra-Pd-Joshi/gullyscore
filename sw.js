@@ -1,6 +1,6 @@
 // BaglekhanScore service worker — network-first with offline fallback
-const CACHE = 'baglekhanscore-v4';
-const ASSETS = ['.', 'index.html', 'styles.css', 'app.js', 'manifest.webmanifest', 'icon.svg'];
+const CACHE = 'baglekhanscore-v5';
+const ASSETS = ['.', 'index.html', 'styles.css', 'app.js', 'firebase-config.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
